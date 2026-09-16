@@ -33,6 +33,7 @@ _CLAIMS = _load("claims.json")
 _POLICYHOLDERS = _load("policyholders.json")
 _REPRESENTATIVES = _load("representatives.json")
 _GUIDELINE = _load("required_document_guideline.json")
+_CONSENT_SCENARIOS = _load("consent_scenarios.json")
 
 TOPICS = [e["topic"] for e in _GUIDELINE.get("claim_followup_guidance", [])]
 DOCUMENT_NAMES = list(_GUIDELINE.get("document_guidance", {}).keys())
@@ -129,13 +130,28 @@ def get_policyholder(party_id: str) -> Optional[dict]:
     return None
 
 
-def get_representative_context(name: str) -> Optional[dict]:
-    """Looks up whether `name` is a known authorized representative calling
-    on behalf of a policyholder (stretch: representative/consent flow)."""
+def match_representative(rep_name: Optional[str] = None,
+                          buyer_name: Optional[str] = None) -> Optional[dict]:
+    """Looks up whether the caller is a known authorized representative
+    calling on behalf of a policyholder, by either the caller's own stated
+    name or the policyholder's name they say they're calling for -- callers
+    don't always lead with their own name first."""
     for rep in _REPRESENTATIVES:
-        if _norm_text(rep.get("rep_name")) == _norm_text(name):
+        if rep_name and _norm_text(rep.get("rep_name")) == _norm_text(rep_name):
+            return rep
+        if buyer_name and _norm_text(rep.get("buyer_name")) == _norm_text(buyer_name):
             return rep
     return None
+
+
+def next_consent_status(scenario: str, check_number: int) -> str:
+    """Simulates polling an async consent request from the policyholder.
+    `check_number` is the 1-indexed count of checks made so far this call;
+    once the scenario's status_sequence is exhausted, its last status
+    (e.g. stuck "pending" for the "timeout" scenario) repeats."""
+    config = _CONSENT_SCENARIOS.get(scenario) or _CONSENT_SCENARIOS["default"]
+    sequence = config["status_sequence"]
+    return sequence[min(check_number - 1, len(sequence) - 1)]
 
 
 # ---------------------------------------------------------------------------

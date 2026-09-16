@@ -35,9 +35,26 @@ present in the message):
   "topic_guess": one of {topics} | "necessity" | "status_or_denial" | null,
   "document_mentioned": string|null,   // one of {documents}, else raw phrase
   "emotion": "frustrated"|"angry"|"anxious"|"confused"|null,
+  "is_representative": boolean,  // true if the caller says or implies they
+                                   // are NOT the policyholder and are calling
+                                   // on that person's behalf (e.g. a family
+                                   // member handling their claim)
+  "rep_name": string|null,       // the caller's own name, if they gave it
+                                   // while identifying as a representative
+  "buyer_name": string|null,     // the policyholder's name they say they're
+                                   // calling on behalf of
   "in_scope": boolean,   // false for questions unrelated to this caller's
                           // own insurance claim / policy / this conversation
-  "wants_human": boolean,
+  "wants_human": boolean,  // true ONLY if the caller explicitly asks to
+                             // speak with a human, agent, person, or
+                             // representative, or asks to be transferred
+                             // (e.g. "let me talk to a person", "transfer
+                             // me", "get me a human"). Do NOT set this true
+                             // just because the caller states a policy or
+                             // claim number, describes their situation,
+                             // sounds frustrated, or asks an in-scope
+                             // question -- those are normal turns, not a
+                             // request for a human.
   "wants_to_end": boolean,
   "affirmation": true|false|null   // true/false if this message is a yes/no
                                      // answer to a prior yes/no question,
@@ -86,4 +103,7 @@ def extract_turn(llm, session, user_message: str) -> dict:
     data.setdefault("wants_human", False)
     data.setdefault("wants_to_end", False)
     data.setdefault("affirmation", None)
+    data.setdefault("is_representative", False)
+    data.setdefault("rep_name", None)
+    data.setdefault("buyer_name", None)
     return data

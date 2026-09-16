@@ -116,7 +116,8 @@ _STATUSES = ["denied", "closed", "open"]
 _IN_SCOPE_HINTS = [
     "claim", "policy", "denied", "denial", "reimburs", "document", "submit",
     "status", "appeal", "email", "verify", "identity", "human", "represent",
-    "dob", "ssn", "ss n", "phone", "email", "name",
+    "dob", "ssn", "ss n", "phone", "email", "name", "behalf", "consent",
+    "mother", "father", "son", "daughter", "parent",
 ]
 
 
@@ -224,6 +225,11 @@ class MockLLMClient:
             if any(w in low for w in words):
                 out["emotion"] = emotion
                 break
+
+        rep_match = re.search(r"on behalf of ([A-Za-z][A-Za-z' -]*?)(?=[,.\d]|$)", text, re.IGNORECASE)
+        out["is_representative"] = bool(rep_match) or "not the policyholder" in low
+        out["buyer_name"] = rep_match.group(1).strip() if rep_match else None
+        out["rep_name"] = out["pii"].get("full_name")
 
         if low.strip() in ("yes", "yes please", "yep", "sure", "correct", "that's right"):
             out["affirmation"] = True

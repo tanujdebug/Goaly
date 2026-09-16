@@ -62,7 +62,7 @@ def verify_id_system(session, matched_fields: set, missing_fields: list,
         "email": "email", "ssn_last4": "SSN last 4 digits",
     }
     matched_txt = ", ".join(field_labels[f] for f in matched_fields) or "none yet"
-    still_need = len(grounding.PII_FIELDS) - len(matched_fields)
+    still_need = 3 - len(matched_fields)
 
     persuasion = ""
     if attempts >= 3 and emotion in ("frustrated", "angry"):
@@ -96,9 +96,108 @@ def verify_id_system(session, matched_fields: set, missing_fields: list,
         "caller may give these in any order, partially, or ask which "
         "fields are acceptable -- handle that naturally. If they refuse a "
         "field, offer an alternate one from the list.\n\n"
+        "The list of 'confirmed' fields below is the ONLY source of truth "
+        "for verification status -- it reflects fields that were actually "
+        "matched against the account record, not just fields the caller "
+        "mentioned (a caller can state a field that turns out not to "
+        "match). While fewer than 3 fields are confirmed you are still "
+        "UNVERIFIED no matter how many fields the caller has stated or how "
+        "confident they sound. Do NOT say or imply verification is done "
+        "(e.g. 'thanks for confirming', 'you're verified', 'that "
+        "confirms it'), and do NOT act as if you have looked up, pulled "
+        "up, or found their claim/account (e.g. 'I've pulled up claim "
+        "X', 'let me check that claim') -- you have no access to any "
+        "claim or account data at all right now. If the caller mentions a "
+        "claim number, policy number, or case details, acknowledge you "
+        "heard it and note it'll be used once verification is complete, "
+        "but do not treat it as found or confirmed.\n\n"
         f"Confirmed so far: {matched_txt} (need {max(still_need, 0)} more "
         "of the 5 listed fields, at least 3 total)."
         f"{ambiguous_note}{persuasion}"
+        f"{_emotion_block(emotion)}"
+    )
+
+
+def verify_id_safe_fallback(matched_fields: set, missing_fields: list, ambiguous: bool) -> str:
+    """Deterministic, hallucination-proof reply used when the LLM's free-text
+    VERIFY_ID reply is caught claiming premature verification, referencing a
+    claim, or inventing contact/submission details (see
+    state_machine._breaches_verify_gate). Some real models (esp. smaller
+    ones) don't reliably follow the prompt instructions above, so this is a
+    code-level backstop, not just prompt wording."""
+    field_labels = {
+        "full_name": "your full name", "dob": "your date of birth",
+        "phone": "your phone number", "email": "your email address",
+        "ssn_last4": "the last 4 digits of your SSN",
+    }
+    if ambiguous:
+        return (
+            "Thanks -- what you've given so far matches more than one account, "
+            "so I can't confirm your identity yet. Could you share one more "
+            "identifying detail (full name, date of birth, phone number, email "
+            "address, or the last 4 digits of your SSN)?"
+        )
+    ordered_matched = [field_labels[f] for f in grounding.PII_FIELDS if f in matched_fields]
+    if not ordered_matched:
+        matched_txt = "nothing yet"
+    elif len(ordered_matched) == 1:
+        matched_txt = ordered_matched[0]
+    else:
+        matched_txt = ", ".join(ordered_matched[:-1]) + f", and {ordered_matched[-1]}"
+    still_need = max(3 - len(matched_fields), 0)
+    return (
+        f"I have {matched_txt} noted, but I'm not able to access any claim or "
+        f"account details yet. I still need {still_need} more of the "
+        "following to verify your identity: full name, date of birth, phone "
+        "number, email address, or the last 4 digits of your SSN. Could you "
+        "share one of those?"
+    )
+
+
+# ---------------------------------------------------------------------------
+# VERIFY_ID -- representative/consent sub-flow (caller is not the
+# policyholder; access is gated on the policyholder's consent, not PII)
+# ---------------------------------------------------------------------------
+
+def representative_unrecognized_system(session, buyer_name: str | None,
+                                        emotion: str | None) -> str:
+    return (
+        f"{BASE_RULES}\n\n"
+        "PHASE: VERIFY_ID -- the caller says they are calling on behalf of "
+        f"someone else{f' ({buyer_name})' if buyer_name else ''}, but they "
+        "are not a recognized authorized representative on file.\n"
+        "You must NOT disclose any claim or policy details. Let them know "
+        "you can't find an authorization on file for them to act on this "
+        "account. Offer two options: they can have the policyholder call "
+        "in directly (or verify their own identity if they ARE the "
+        "policyholder), or you can connect them with a human representative "
+        "to sort out authorization."
+        f"{_emotion_block(emotion)}"
+    )
+
+
+def consent_pending_system(session, emotion: str | None, checks: int) -> str:
+    persuasion = ""
+    if checks >= 2 and emotion in ("frustrated", "angry"):
+        persuasion = (
+            "\nThe caller is getting impatient waiting for consent. Briefly "
+            "explain WHY this matters: the account holder's information is "
+            "protected, and even a family member needs the policyholder's "
+            "permission before it can be shared -- this protects the "
+            "policyholder, not just process for its own sake. Mention they "
+            "can wait a bit longer or be connected with a human "
+            "representative instead."
+        )
+    return (
+        f"{BASE_RULES}\n\n"
+        f"PHASE: VERIFY_ID -- {session.rep_name or 'the caller'} is calling "
+        f"on behalf of the policyholder, and we are waiting on the "
+        "policyholder's consent before any account or claim details can be "
+        "shared. Consent has not been granted yet.\n"
+        "Do NOT disclose any claim or policy details. Let the caller know "
+        "consent is still pending and you'll let them know as soon as it "
+        "comes through."
+        f"{persuasion}"
         f"{_emotion_block(emotion)}"
     )
 

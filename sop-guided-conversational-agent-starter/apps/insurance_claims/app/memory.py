@@ -39,6 +39,16 @@ class SessionMemory:
     month_hint: Optional[str] = None
     free_text_hint: Optional[str] = None
 
+    # representative/consent flow: a non-policyholder caller authorized to
+    # act on the policyholder's behalf, gated on the policyholder granting
+    # consent (simulated as an async status check) rather than on PII match
+    is_representative: bool = False
+    rep_name: Optional[str] = None
+    rep_buyer_party_id: Optional[str] = None
+    consent_status: Optional[str] = None
+    consent_checks: int = 0
+    consent_scenario: str = "default"
+
     # intent / case resolution
     resolved_intent: Optional[str] = None
     active_case_id: Optional[str] = None
