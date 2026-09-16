@@ -51,7 +51,12 @@ served there. Paste your API key into the "API key" field in the sidebar
 (it's sent only with each chat request from your browser, never stored
 server-side); it defaults to an OpenAI-compatible chat-completions endpoint,
 model `gpt-4o-mini`. You can point `Base URL` at any OpenAI-compatible
-endpoint and change the model.
+endpoint and change the model — the "Groq" provider preset in the dropdown
+fills in Groq's endpoint and a free-tier model (`openai/gpt-oss-20b`) for a
+quick no-cost test; it was also the model most used to stress-test the
+`VERIFY_ID` gate during development, since smaller/faster models are more
+likely to ignore prompt instructions than GPT-4o-mini, which is exactly
+what the deterministic backstops in `state_machine.py` are there to catch.
 
 You can instead supply the key via environment variables and skip the UI
 field:
@@ -163,10 +168,27 @@ Other things to try:
 
 - Session state is in-memory per process (fine for this demo; not
   persisted across restarts, not safe with multiple uvicorn workers).
-- The representative/consent flow (`fixtures/representatives.json`,
-  `fixtures/consent_scenarios.json`) is not yet wired into the state
-  machine — a caller who isn't the policyholder currently falls back to
-  normal verification rather than a dedicated consent flow.
 - The "send email" step in `POST_PROCESS` logs/marks the summary as sent
   rather than dispatching a real email — no SMTP credentials are part of
   this assessment's scope.
+- The `VERIFY_ID`-phase hallucination guard (`state_machine._breaches_verify_gate`)
+  is a pattern-based backstop, not a semantic check — it catches the
+  disclosure/false-confirmation patterns observed in testing (claim IDs,
+  "I've pulled up...", fabricated emails/phone numbers, "you're verified"),
+  but a sufficiently different phrasing could in principle slip past it.
+  The deterministic gate underneath (`grounding.verify_identity`) is the
+  real source of truth and cannot be talked around regardless.
+
+## Representative / consent flow
+
+A caller who isn't the policyholder (e.g. "I'm calling on behalf of my
+mother Margaret Chen") is matched against `fixtures/representatives.json`
+by their own name or the policyholder's name, then gated on the
+policyholder's consent rather than a PII match — simulated as an async
+status check (`fixtures/consent_scenarios.json`) that's polled once per
+turn regardless of what the caller says. This re-gates on every turn, not
+just during initial verification: if a caller announces mid-conversation
+(even in an already-verified session) that they're actually calling on
+someone else's behalf, any prior verification for that session is reset
+and consent is required before anything further is disclosed. Try it with
+the "Representative + consent" sample button.
